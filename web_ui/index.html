@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>中国象棋 AI 思维链 (CoT) 对弈推演台</title>
+  <style>
+    :root {
+      --bg-page: #f5f2eb;
+      --bg-card: #ffffff;
+      --bg-board: #eab676;
+      --border-subtle: #e5dec9;
+      --text-main: #1f2937;
+      --text-muted: #6b7280;
+      --accent-red: #b91c1c;
+      --accent-gold: #b45309;
+      --accent-jade: #0f766e;
+      --accent-blue: #1d4ed8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+      background: var(--bg-page);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #1c1917;
+      color: #fafaf9;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 3px solid #b45309;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-seal {
+      width: 34px;
+      height: 34px;
+      border-radius: 6px;
+      background: #b91c1c;
+      color: #fffbeb;
+      font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+      font-size: 20px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1.5px solid #fca5a5;
+    }
+    .brand h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .brand p {
+      font-size: 12px;
+      color: #d6d3d1;
+    }
+    .model-pill-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .status-chip {
+      font-size: 12px;
+      background: #292524;
+      border: 1px solid #44403c;
+      color: #e7e5e4;
+      padding: 5px 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot-ok { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; }
+    .dot-warn { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; }
+
+    main {
+      max-width: 1360px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 18px 20px 28px;
+      display: grid;
+      grid-template-columns: minmax(380px, 540px) minmax(400px, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+    @media (max-width: 960px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(28, 25, 23, 0.06);
+      overflow: hidden;
+    }
+
+    /* Left Column: Board & Controls */
+    .board-card {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .turn-banner {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      background: #faf7f0;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+    }
+    .turn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .turn-disc {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+    }
+    .turn-red { color: var(--accent-red); }
+    .turn-black { color: #111827; }
+
+    .alert-badge {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+    }
+    .badge-check {
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+      animation: pulseCheck 1s infinite alternate;
+    }
+    .badge-win {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    .badge-thinking {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+    @keyframes pulseCheck {
+      from { transform: scale(1); }
+      to { transform: scale(1.06); }
+    }
+
+    .board-wrap {
+      width: 100%;
+      max-width: 486px;
+      aspect-ratio: 9 / 10.2;
+      position: relative;
+      user-select: none;
+    }
+    svg#xq-board {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 10px;
+      box-shadow: inset 0 0 0 2px #854d0e, 0 8px 20px rgba(68, 40, 12, 0.18);
+      background: linear-gradient(145deg, #f3ca8c 0%, #e4ab63 55%, #d99b4e 100%);
+    }
+    .piece-group {
+      cursor: pointer;
+      transition: transform 0.14s ease;
+    }
+    .target-hit {
+      cursor: pointer;
+    }
+
+    .action-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    button {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 9px 10px;
+      border-radius: 8px;
+      border: 1px solid #d6d3d1;
+      background: #fafaf9;
+      color: #1c1917;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    button:hover:not(:disabled) {
+      background: #f0ece1;
+      border-color: #a8a29e;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button.btn-primary {
+      grid-column: span 2;
+      background: #b91c1c;
+      color: #ffffff;
+      border-color: #991b1b;
+      font-size: 14px;
+    }
+    button.btn-primary:hover:not(:disabled) {
+      background: #991b1b;
+    }
+    button.btn-secondary-accent {
+      background: #0f766e;
+      color: #ffffff;
+      border-color: #115e59;
+    }
+    button.btn-secondary-accent:hover:not(:disabled) {
+      background: #115e59;
+    }
+
+    .options-bar {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 13px;
+      padding: 6px 4px 2px;
+      color: #44403c;
+    }
+    .options-bar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .preset-fen-box {
+      width: 100%;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .row-flex {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+    }
+    select, input[type="text"] {
+      font-family: inherit;
+      font-size: 12.5px;
+      padding: 7px 9px;
+      border: 1px solid #d6d3d1;
+      border-radius: 7px;
+      background: #ffffff;
+      color: var(--text-main);
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* Right Column: CoT Studio & Move History */
+    .cot-column {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 620px;
+    }
+    .cot-card {
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1;
+    }
+    .cot-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .cot-header h2 {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .engine-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: #faf7f0;
+      padding: 9px 12px;
+      border-radius: 9px;
+      border: 1px solid var(--border-subtle);
+      font-size: 12.5px;
+    }
+    .engine-controls label {
+      font-weight: 600;
+      color: #44403c;
+    }
+
+    .cot-stream-box {
+      flex: 1;
+      min-height: 290px;
+      max-height: 410px;
+      overflow-y: auto;
+      background: #18181b;
+      color: #e4e4e7;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 14px;
+      line-height: 1.78;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid #27272a;
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .cot-placeholder {
+      color: #71717a;
+      font-style: italic;
+    }
+    .hl-dag {
+      background: rgba(245, 158, 11, 0.22);
+      color: #fcd34d;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .hl-route {
+      color: #5eead4;
+      font-weight: 700;
+    }
+    .hl-conn {
+      color: #fda4af;
+      font-weight: 600;
+    }
+    .hl-think-tag {
+      color: #a1a1aa;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+
+    .decision-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 11px 14px;
+      background: #fefce8;
+      border: 1px solid #fde68a;
+      border-radius: 10px;
+    }
+    .decision-move {
+      font-size: 16px;
+      font-weight: 800;
+      color: #991b1b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .decision-meta {
+      font-size: 12px;
+      color: #57534e;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Move History Card */
+    .history-card {
+      padding: 14px 18px;
+    }
+    .history-card h3 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #44403c;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .hist-item {
+      font-size: 12.5px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: #f5f5f4;
+      border: 1px solid #e7e5e4;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hist-item.has-cot {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1e40af;
+    }
+    .hist-item.active-hist {
+      outline: 2px solid #b45309;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-seal">帥</div>
+      <div>
+        <h1>中国象棋 · 思维链 (CoT) 可视化对弈推演台</h1>
+        <p>点击棋子直接走棋 · 实时流式展示 AI `<|think|>` 变例推演与同局面合流逻辑</p>
+      </div>
+    </div>
+    <div class="model-pill-bar">
+      <span class="status-chip" id="ckpt-status-chip">
+        <span class="dot-warn"></span> 正在连接后端模型...
+      </span>
+      <button onclick="reloadCheckpoint()" title="训练过程中可随时点击热更新最新 best_model.pt">
+        🔄 热重载最新权重
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left: Interactive SVG Xiangqi Board -->
+    <section class="card board-card">
+      <div class="turn-banner">
+        <div class="turn-indicator turn-red" id="turn-label">
+          <span class="turn-disc"></span>
+          <span id="turn-text">红方行棋</span>
+        </div>
+        <div id="game-badge"></div>
+      </div>
+
+      <div class="board-wrap">
+        <svg id="xq-board" viewBox="0 0 540 600" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+
+      <div class="action-grid">
+        <button class="btn-primary" id="btn-ai-move" onclick="requestAiMove()">
+          🤖 让 AI 思考并走当前步
+        </button>
+        <button id="btn-undo" onclick="undoMove()">↩️ 悔棋</button>
+        <button onclick="flipBoard()">🔄 翻转棋盘</button>
+      </div>
+
+      <div class="options-bar">
+        <label>
+          <input type="checkbox" id="chk-auto-ai" checked />
+          我点击走棋后，AI 自动思考应手
+        </label>
+        <label>
+          <input type="checkbox" id="chk-sound" checked />
+          🔊 落子音效
+        </label>
+        <button onclick="resetNewGame()" style="padding:5px 10px; font-size:12px;">🆕 重新开局</button>
+      </div>
+
+      <div class="preset-fen-box">
+        <div class="row-flex">
+          <select id="preset-select" onchange="loadPresetFen()">
+            <option value="rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1">📖 预设盘面：标准初始开局（红先）</option>
+            <option value="r1bakab1r/9/1cn4c1/p1p1p1p1p/9/2P6/P3P1P1P/1C2C1N2/9/RNBAKAB1R w - - 0 5">⚔️ 中炮对屏风马进七兵（经典中局）</option>
+            <option value="1rbakab1r/9/1cn4c1/p1p1p1p1p/9/2P6/P3P1P1P/2C1C1N2/9/RNBAKAB1R b - - 0 6">🔀 五七炮对屏风马（多路【同形合流】典型盘面·黑先）</option>
+            <option value="r1bakab2/8r/1cn1c4/p1p1p1p1p/9/2P6/P3P1P1P/1C2C1N2/9/RNBAKAB1R w - - 0 6">🔥 顺炮直车对横车（中局对攻）</option>
+            <option value="2bak4/4a4/4b4/p3p3p/2pn5/2P3B2/P3P3P/3AC1N2/4K4/2r3R2 w - - 0 22">♟️ 车马炮对车马卒（实用残局转换）</option>
+          </select>
+        </div>
+        <div class="row-flex">
+          <input type="text" id="fen-input" placeholder="粘贴任意中国象棋 FEN 串..." />
+          <button onclick="loadCustomFen()">载入 FEN</button>
+          <button onclick="copyCurrentFen()" title="复制当前盘面 FEN">复制 FEN</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Real-Time CoT Reasoning Panel & Move History -->
+    <div class="cot-column">
+      <section class="card cot-card">
+        <div class="cot-header">
+          <h2>🧠 AI 思维链 (Chain-of-Thought) 实时推演输出</h2>
+          <span id="stream-state-text" style="font-size:12px; color:#6b7280;">就绪 · 点击棋盘走子或点「让 AI 思考」</span>
+        </div>
+
+        <div class="engine-controls">
+          <label for="ai-mode">AI 推演引擎：</label>
+          <select id="ai-mode" style="max-width:310px;">
+            <option value="lm_smart">🧠 自研神经网络 CoT 模型（带合法性守护·推荐）</option>
+            <option value="lm_raw">🎯 纯自研神经网络 CoT 模型（零引擎介入·测真实水平）</option>
+            <option value="pikafish_dag">👑 Pikafish 大师引擎 + 实时五重【同形合流】DAG-CoT</option>
+          </select>
+
+          <label for="temp-slider">采样温度：</label>
+          <input type="range" id="temp-slider" min="0" max="0.8" step="0.1" value="0.0"
+                 oninput="document.getElementById('temp-val').textContent = Number(this.value).toFixed(1)"
+                 style="width:85px;" />
+          <span id="temp-val" style="font-variant-numeric:tabular-nums; font-weight:700;">0.0</span>
+        </div>
+
+        <div class="cot-stream-box" id="cot-box">
+          <span class="cot-placeholder">尚未生成推演。你可以在左侧点击红方棋子走第一步（例如「炮二平五」或「马二进三」），AI 将在此处实时流式输出完整 `<|think|> ... <|/think|>` 思考过程并落子回应；也可以直接点击「🤖 让 AI 思考并走当前步」让 AI 先手行棋！</span>
+        </div>
+
+        <div class="decision-bar">
+          <div class="decision-move" id="decision-move-label">
+            最佳走法：—
+          </div>
+          <div class="decision-meta" id="decision-meta-label">
+            <span>来源：等待落子</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card history-card">
+        <h3>
+          <span>📜 着法记录（点击带 🧠 标记的步数可回看当步 AI 思维链）</span>
+          <span id="ply-counter" style="font-weight:500; color:#78716c; font-size:12px;">共 0 步</span>
+        </h3>
+        <div class="history-list" id="history-list">
+          <span style="font-size:12.5px; color:#a8a29e;">暂无走子记录</span>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const START_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1";
+    const PIECE_LABELS = {
+      K: "帥", A: "仕", B: "相", N: "馬", R: "車", C: "炮", P: "兵",
+      k: "將", a: "士", b: "象", n: "馬", r: "車", c: "砲", p: "卒"
+    };
+    const RED_NUM = ["九", "八", "七", "六", "五", "四", "三", "二", "一"];
+    const BLK_NUM = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+    let boardState = {
+      fen: START_FEN,
+      turn: "w",
+      grid: [],
+      in_check: false,
+      legal_moves: []
+    };
+    let flipped = false;
+    let selectedSq = null;      // { col, row }
+    let lastMove = null;        // { c1, r1, c2, r2 }
+    let aiBusy = false;
+    let gameHistory = [];       // [{ fenBefore, fenAfter, uci, zh, mover, lastMove, cot, meta }]
+    let abortCtrl = null;
+
+    // Synthesize crisp wooden piece sound via Web Audio API (zero external audio files needed)
+    let audioCtx = null;
+    function playWoodClick(isCapture = false) {
+      if (!document.getElementById("chk-sound").checked) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = isCapture ? "triangle" : "sine";
+        const now = audioCtx.currentTime;
+        osc.frequency.setValueAtTime(isCapture ? 220 : 310, now);
+        osc.frequency.exponentialRampToValueAtTime(isCapture ? 68 : 95, now + 0.065);
+        gain.gain.setValueAtTime(isCapture ? 0.35 : 0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.075);
+      } catch (e) {}
+    }
+
+    // Board coordinate mapping (col: 0..8, row: 0..9 where row 0 is Red bottom)
+    const PAD_X = 50, PAD_Y = 48, CELL = 55;
+    function sqToXY(col, row) {
+      const vx = flipped ? (8 - col) : col;
+      const vy = flipped ? row : (9 - row);
+      return { x: PAD_X + vx * CELL, y: PAD_Y + vy * CELL };
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function formatHighlightedCoT(rawText) {
+      let h = escapeHtml(rawText);
+      h = h.replace(/(&lt;\|\/?think\|&gt;)/g, '<span class="hl-think-tag">$1</span>');
+      h = h.replace(/(【同形合流\d*】)/g, '<span class="hl-dag">$1</span>');
+      h = h.replace(/(【路线[一二三四五六][^】]*】)/g, '<span class="hl-route">$1</span>');
+      h = h.replace(/(（[1-6]）|[①②③④⑤⑥⑦⑧])/g, '<span class="hl-route">$1</span>');
+      h = h.replace(/(如果|或者|抑或|归于同一盘面|归于同形|此后|最佳走法：)/g, '<span class="hl-conn">$1</span>');
+      return h;
+    }
+
+    function renderSvgBoard() {
+      const svg = document.getElementById("xq-board");
+      const parts = [];
+
+      // Outer frame
+      parts.push(`<rect x="14" y="14" width="512" height="572" rx="8" fill="none" stroke="#6c3c0c" stroke-width="2.5"/>`);
+      parts.push(`<rect x="${PAD_X}" y="${PAD_Y}" width="${8*CELL}" height="${9*CELL}" fill="none" stroke="#5c3208" stroke-width="2"/>`);
+
+      // File coordinate numerals (top & bottom)
+      for (let c = 0; c < 9; c++) {
+        const x = PAD_X + c * CELL;
+        const topLbl = flipped ? RED_NUM[8 - c] : BLK_NUM[c];
+        const botLbl = flipped ? BLK_NUM[8 - c] : RED_NUM[c];
+        parts.push(`<text x="${x}" y="32" text-anchor="middle" font-size="13" font-weight="700" fill="#5c3208">${topLbl}</text>`);
+        parts.push(`<text x="${x}" y="578" text-anchor="middle" font-size="13" font-weight="700" fill="#7c2d12">${botLbl}</text>`);
+      }
+
+      // Horizontal rank lines
+      for (let r = 1; r < 9; r++) {
+        const y = PAD_Y + r * CELL;
+        parts.push(`<line x1="${PAD_X}" y1="${y}" x2="${PAD_X + 8*CELL}" y2="${y}" stroke="#5c3208" stroke-width="1.4"/>`);
+      }
+      // Vertical file lines (split across River except outer files 0 & 8)
+      for (let c = 1; c < 8; c++) {
+        const x = PAD_X + c * CELL;
+        parts.push(`<line x1="${x}" y1="${PAD_Y}" x2="${x}" y2="${PAD_Y + 4*CELL}" stroke="#5c3208" stroke-width="1.4"/>`);
+        parts.push(`<line x1="${x}" y1="${PAD_Y + 5*CELL}" x2="${x}" y2="${PAD_Y + 9*CELL}" stroke="#5c3208" stroke-width="1.4"/>`);
+      }
+
+      // Nine-Palace diagonals (top & bottom)
+      parts.push(`<line x1="${PAD_X + 3*CELL}" y1="${PAD_Y}" x2="${PAD_X + 5*CELL}" y2="${PAD_Y + 2*CELL}" stroke="#5c3208" stroke-width="1.4"/>`);
+      parts.push(`<line x1="${PAD_X + 5*CELL}" y1="${PAD_Y}" x2="${PAD_X + 3*CELL}" y2="${PAD_Y + 2*CELL}" stroke="#5c3208" stroke-width="1.4"/>`);
+      parts.push(`<line x1="${PAD_X + 3*CELL}" y1="${PAD_Y + 7*CELL}" x2="${PAD_X + 5*CELL}" y2="${PAD_Y + 9*CELL}" stroke="#5c3208" stroke-width="1.4"/>`);
+      parts.push(`<line x1="${PAD_X + 5*CELL}" y1="${PAD_Y + 7*CELL}" x2="${PAD_X + 3*CELL}" y2="${PAD_Y + 9*CELL}" stroke="#5c3208" stroke-width="1.4"/>`);
+
+      // Fiducial L-ticks at cannon & pawn squares
+      const fiducials = [
+        [1,2],[7,2],[1,7],[7,7],
+        [0,3],[2,3],[4,3],[6,3],[8,3],
+        [0,6],[2,6],[4,6],[6,6],[8,6]
+      ];
+      for (const [fc, fr] of fiducials) {
+        const { x, y } = sqToXY(fc, fr);
+        const d = 4, l = 9;
+        const vx = flipped ? (8 - fc) : fc;
+        if (vx > 0) {
+          parts.push(`<polyline points="${x-d-l},${y-d} ${x-d},${y-d} ${x-d},${y-d-l}" fill="none" stroke="#5c3208" stroke-width="1.3"/>`);
+          parts.push(`<polyline points="${x-d-l},${y+d} ${x-d},${y+d} ${x-d},${y+d+l}" fill="none" stroke="#5c3208" stroke-width="1.3"/>`);
+        }
+        if (vx < 8) {
+          parts.push(`<polyline points="${x+d+l},${y-d} ${x+d},${y-d} ${x+d},${y-d-l}" fill="none" stroke="#5c3208" stroke-width="1.3"/>`);
+          parts.push(`<polyline points="${x+d+l},${y+d} ${x+d},${y+d} ${x+d},${y+d+l}" fill="none" stroke="#5c3208" stroke-width="1.3"/>`);
+        }
+      }
+
+      // River Calligraphy
+      const riverY = PAD_Y + 4.5 * CELL + 8;
+      parts.push(`<text x="${PAD_X + 2*CELL}" y="${riverY}" text-anchor="middle" font-family="'STKaiti','KaiTi','Noto Serif SC',serif" font-size="25" font-weight="700" fill="#5c3208" letter-spacing="10">楚河</text>`);
+      parts.push(`<text x="${PAD_X + 6*CELL}" y="${riverY}" text-anchor="middle" font-family="'STKaiti','KaiTi','Noto Serif SC',serif" font-size="25" font-weight="700" fill="#5c3208" letter-spacing="10">汉界</text>`);
+
+      // Last move highlight markers
+      if (lastMove) {
+        const p1 = sqToXY(lastMove.c1, lastMove.r1);
+        const p2 = sqToXY(lastMove.c2, lastMove.r2);
+        parts.push(`<circle cx="${p1.x}" cy="${p1.y}" r="8" fill="rgba(29, 78, 216, 0.35)" stroke="#1d4ed8" stroke-width="2"/>`);
+        parts.push(`<circle cx="${p2.x}" cy="${p2.y}" r="26" fill="none" stroke="#1d4ed8" stroke-width="3" stroke-dasharray="6 3"/>`);
+      }
+
+      // Selected piece glow
+      if (selectedSq) {
+        const ps = sqToXY(selectedSq.col, selectedSq.row);
+        parts.push(`<circle cx="${ps.x}" cy="${ps.y}" r="27" fill="rgba(245, 158, 11, 0.28)" stroke="#d97706" stroke-width="3"/>`);
+      }
+
+      // Render 32 wooden pieces
+      if (boardState.grid && boardState.grid.length === 10) {
+        for (let r = 0; r < 10; r++) {
+          for (let c = 0; c < 9; c++) {
+            const p = boardState.grid[r][c];
+            if (!p || p === ".") continue;
+            const { x, y } = sqToXY(c, r);
+            const isRed = (p === p.toUpperCase());
+            const fg = isRed ? "#b91c1c" : "#18181b";
+            const ring = isRed ? "#dc2626" : "#3f3f46";
+            const isSel = selectedSq && selectedSq.col === c && selectedSq.row === r;
+            const liftY = isSel ? y - 3 : y;
+            const label = PIECE_LABELS[p] || p;
+
+            parts.push(`
+              <g class="piece-group" onclick="onSquareClick(${c}, ${r})">
+                <circle cx="${x}" cy="${y + 3}" r="23.5" fill="rgba(40, 20, 5, 0.32)"/>
+                <circle cx="${x}" cy="${liftY}" r="23.5" fill="#fdf6e3" stroke="#78350f" stroke-width="1.8"/>
+                <circle cx="${x}" cy="${liftY}" r="19.5" fill="none" stroke="${ring}" stroke-width="1.4"/>
+                <text x="${x}" y="${liftY + 8}" text-anchor="middle"
+                      font-family="'STKaiti','KaiTi','Noto Serif SC','SimKai',serif"
+                      font-size="24" font-weight="700" fill="${fg}">${label}</text>
+              </g>
+            `);
+          }
+        }
+      }
+
+      // Legal target overlays for currently selected piece (drawn ON TOP so capture clicks always hit!)
+      if (selectedSq && !aiBusy) {
+        const legalTargets = boardState.legal_moves.filter(
+          m => m.c1 === selectedSq.col && m.r1 === selectedSq.row
+        );
+        for (const m of legalTargets) {
+          const { x, y } = sqToXY(m.c2, m.r2);
+          if (m.is_capture) {
+            parts.push(`
+              <g class="target-hit" onclick="executeHumanMove('${m.uci}')">
+                <circle cx="${x}" cy="${y}" r="25" fill="rgba(220, 38, 38, 0.18)" stroke="#dc2626" stroke-width="3"/>
+              </g>
+            `);
+          } else {
+            parts.push(`
+              <g class="target-hit" onclick="executeHumanMove('${m.uci}')">
+                <circle cx="${x}" cy="${y}" r="20" fill="transparent"/>
+                <circle cx="${x}" cy="${y}" r="7.5" fill="rgba(15, 118, 110, 0.82)" stroke="#ffffff" stroke-width="1.8"/>
+              </g>
+            `);
+          }
+        }
+      }
+
+      svg.innerHTML = parts.join("");
+    }
+
+    function updateStatusUI() {
+      const turnLbl = document.getElementById("turn-label");
+      const turnTxt = document.getElementById("turn-text");
+      const badge = document.getElementById("game-badge");
+      const isRed = boardState.turn === "w";
+
+      turnLbl.className = "turn-indicator " + (isRed ? "turn-red" : "turn-black");
+      turnTxt.textContent = isRed ? "红方行棋" : "黑方行棋";
+      document.getElementById("fen-input").value = boardState.fen;
+
+      if (boardState.legal_moves.length === 0) {
+        const winner = isRed ? "黑方胜出（绝杀/困毙）" : "红方胜出（绝杀/困毙）";
+        badge.innerHTML = `<span class="alert-badge badge-win">🏆 ${winner}</span>`;
+        document.getElementById("btn-ai-move").disabled = true;
+      } else if (aiBusy) {
+        badge.innerHTML = `<span class="alert-badge badge-thinking">⏳ AI 正在推演思维链...</span>`;
+        document.getElementById("btn-ai-move").disabled = true;
+      } else if (boardState.in_check) {
+        badge.innerHTML = `<span class="alert-badge badge-check">⚡ 将军！</span>`;
+        document.getElementById("btn-ai-move").disabled = false;
+      } else {
+        badge.innerHTML = "";
+        document.getElementById("btn-ai-move").disabled = false;
+      }
+      document.getElementById("btn-undo").disabled = (gameHistory.length === 0 || aiBusy);
+    }
+
+    function renderHistoryList(activeIndex = -1) {
+      const box = document.getElementById("history-list");
+      document.getElementById("ply-counter").textContent = `共 ${gameHistory.length} 步`;
+      if (gameHistory.length === 0) {
+        box.innerHTML = `<span style="font-size:12.5px; color:#a8a29e;">暂无走子记录</span>`;
+        return;
+      }
+      box.innerHTML = gameHistory.map((item, idx) => {
+        const num = Math.floor(idx / 2) + 1;
+        const prefix = (item.mover === "w") ? `${num}.` : `${num}...`;
+        const hasCot = Boolean(item.cot);
+        const cls = ["hist-item", hasCot ? "has-cot" : "", idx === activeIndex ? "active-hist" : ""].join(" ");
+        const icon = hasCot ? "🧠" : "";
+        return `<span class="${cls}" onclick="inspectHistoryCot(${idx})">${prefix}${item.zh}${icon}</span>`;
+      }).join("");
+    }
+
+    function inspectHistoryCot(idx) {
+      const item = gameHistory[idx];
+      if (!item) return;
+      renderHistoryList(idx);
+      if (item.cot) {
+        document.getElementById("cot-box").innerHTML = formatHighlightedCoT(item.cot);
+        document.getElementById("decision-move-label").textContent = `最佳走法：${item.zh} (${item.uci})`;
+        document.getElementById("decision-meta-label").innerHTML = `<span>${escapeHtml(item.meta || "历史推演回放")}</span>`;
+      }
+    }
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch("./api/status");
+        const data = await res.json();
+        const chip = document.getElementById("ckpt-status-chip");
+        if (data.lm_loaded) {
+          chip.innerHTML = `<span class="dot-ok"></span> 已加载模型: ${escapeHtml(data.model_summary)} | Pikafish: ${data.pikafish_ready ? "就绪" : "未就绪"}`;
+        } else {
+          chip.innerHTML = `<span class="dot-warn"></span> 未检测到已训权重（已自动启用 Pikafish DAG-CoT）`;
+          document.getElementById("ai-mode").value = "pikafish_dag";
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function reloadCheckpoint() {
+      const chip = document.getElementById("ckpt-status-chip");
+      chip.innerHTML = `<span class="dot-warn"></span> 正在重载权重...`;
+      const res = await fetch("./api/reload_model", { method: "POST" });
+      const data = await res.json();
+      await fetchStatus();
+      document.getElementById("stream-state-text").textContent = data.message || "模型状态已刷新";
+    }
+
+    async function syncBoardFromFen(fen) {
+      const res = await fetch("./api/board", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fen })
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert("FEN 解析失败：" + data.error);
+        return false;
+      }
+      boardState = data;
+      selectedSq = null;
+      updateStatusUI();
+      renderSvgBoard();
+      return true;
+    }
+
+    function onSquareClick(col, row) {
+      if (aiBusy || boardState.legal_moves.length === 0) return;
+
+      // If a piece is already selected and clicking a friendly piece or target square:
+      if (selectedSq) {
+        const moveHit = boardState.legal_moves.find(
+          m => m.c1 === selectedSq.col && m.r1 === selectedSq.row && m.c2 === col && m.r2 === row
+        );
+        if (moveHit) {
+          executeHumanMove(moveHit.uci);
+          return;
+        }
+      }
+
+      const p = boardState.grid[row][col];
+      if (!p || p === ".") {
+        selectedSq = null;
+        renderSvgBoard();
+        return;
+      }
+      const isRedPiece = (p === p.toUpperCase());
+      const isSideToMove = (boardState.turn === "w" && isRedPiece) || (boardState.turn === "b" && !isRedPiece);
+      if (isSideToMove) {
+        if (selectedSq && selectedSq.col === col && selectedSq.row === row) {
+          selectedSq = null;
+        } else {
+          selectedSq = { col, row };
+        }
+        renderSvgBoard();
+      }
+    }
+
+    async function executeHumanMove(uci) {
+      if (aiBusy) return;
+      const fenBefore = boardState.fen;
+      const mover = boardState.turn;
+      const res = await fetch("./api/apply_move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fen: fenBefore, uci })
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      playWoodClick(data.is_capture);
+      lastMove = data.move_coords;
+      boardState = data.board;
+      selectedSq = null;
+      gameHistory.push({
+        fenBefore,
+        fenAfter: boardState.fen,
+        uci,
+        zh: data.move_zh,
+        mover,
+        lastMove: { ...lastMove },
+        cot: "",
+        meta: ""
+      });
+      renderHistoryList(gameHistory.length - 1);
+      updateStatusUI();
+      renderSvgBoard();
+
+      if (boardState.legal_moves.length > 0 && document.getElementById("chk-auto-ai").checked) {
+        await requestAiMove();
+      }
+    }
+
+    async function requestAiMove() {
+      if (aiBusy || boardState.legal_moves.length === 0) return;
+      aiBusy = true;
+      selectedSq = null;
+      updateStatusUI();
+      renderSvgBoard();
+
+      const fenBefore = boardState.fen;
+      const mover = boardState.turn;
+      const mode = document.getElementById("ai-mode").value;
+      const temperature = parseFloat(document.getElementById("temp-slider").value || "0.0");
+
+      const cotBox = document.getElementById("cot-box");
+      const stateTxt = document.getElementById("stream-state-text");
+      cotBox.innerHTML = `<span class="hl-think-tag">&lt;|think|&gt;</span>\n正在启动推演...`;
+      stateTxt.textContent = "⚡ AI 正在流式生成思维链 (CoT)...";
+      document.getElementById("decision-move-label").textContent = "最佳走法：思考中...";
+      document.getElementById("decision-meta-label").innerHTML = "";
+
+      let streamedRaw = "";
+      abortCtrl = new AbortController();
+
+      try {
+        const res = await fetch("./api/ai_move_stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fen: fenBefore, mode, temperature }),
+          signal: abortCtrl.signal
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buf = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop();
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const evt = JSON.parse(line);
+            if (evt.type === "delta") {
+              streamedRaw += evt.text;
+              cotBox.innerHTML = formatHighlightedCoT(streamedRaw);
+              cotBox.scrollTop = cotBox.scrollHeight;
+              if (evt.tokens) {
+                stateTxt.textContent = `⚡ 已生成 ${evt.tokens} tokens (${evt.tok_per_s || "-"} tok/s)...`;
+              }
+            } else if (evt.type === "done") {
+              streamedRaw = evt.display_cot || streamedRaw;
+              cotBox.innerHTML = formatHighlightedCoT(streamedRaw);
+              cotBox.scrollTop = cotBox.scrollHeight;
+
+              const metaSummary = `来源: ${evt.source_badge} | ${evt.tokens} tokens | 耗时 ${evt.elapsed_s}s (${evt.tok_per_s} tok/s)`;
+              document.getElementById("decision-move-label").textContent = `最佳走法：${evt.move_zh} (${evt.move_uci})`;
+              document.getElementById("decision-meta-label").innerHTML = `<span>${escapeHtml(metaSummary)}</span>`;
+              stateTxt.textContent = `✅ 推演完成 (${evt.elapsed_s}s)`;
+
+              if (evt.board && evt.move_coords) {
+                playWoodClick(evt.is_capture);
+                lastMove = evt.move_coords;
+                boardState = evt.board;
+                gameHistory.push({
+                  fenBefore,
+                  fenAfter: boardState.fen,
+                  uci: evt.move_uci,
+                  zh: evt.move_zh,
+                  mover,
+                  lastMove: { ...lastMove },
+                  cot: streamedRaw,
+                  meta: metaSummary
+                });
+                renderHistoryList(gameHistory.length - 1);
+              }
+            } else if (evt.type === "error") {
+              stateTxt.textContent = "❌ 推演异常";
+              cotBox.innerHTML = `<span style="color:#f87171;">${escapeHtml(evt.error)}</span>`;
+            }
+          }
+        }
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          stateTxt.textContent = "❌ 请求中断";
+          console.error(err);
+        }
+      } finally {
+        aiBusy = false;
+        abortCtrl = null;
+        updateStatusUI();
+        renderSvgBoard();
+      }
+    }
+
+    async function undoMove() {
+      if (aiBusy || gameHistory.length === 0) return;
+      const autoAi = document.getElementById("chk-auto-ai").checked;
+      let stepsBack = (autoAi && gameHistory.length >= 2) ? 2 : 1;
+      let targetFen = START_FEN;
+      while (stepsBack > 0 && gameHistory.length > 0) {
+        const popped = gameHistory.pop();
+        targetFen = popped.fenBefore;
+        stepsBack--;
+      }
+      lastMove = gameHistory.length > 0 ? gameHistory[gameHistory.length - 1].lastMove : null;
+      renderHistoryList(gameHistory.length - 1);
+      await syncBoardFromFen(targetFen);
+    }
+
+    function flipBoard() {
+      flipped = !flipped;
+      renderSvgBoard();
+    }
+
+    async function resetNewGame() {
+      if (aiBusy && abortCtrl) abortCtrl.abort();
+      aiBusy = false;
+      gameHistory = [];
+      lastMove = null;
+      document.getElementById("preset-select").selectedIndex = 0;
+      renderHistoryList();
+      await syncBoardFromFen(START_FEN);
+    }
+
+    async function loadPresetFen() {
+      const fen = document.getElementById("preset-select").value;
+      gameHistory = [];
+      lastMove = null;
+      renderHistoryList();
+      await syncBoardFromFen(fen);
+    }
+
+    async function loadCustomFen() {
+      const fen = document.getElementById("fen-input").value.trim();
+      if (!fen) return;
+      gameHistory = [];
+      lastMove = null;
+      renderHistoryList();
+      await syncBoardFromFen(fen);
+    }
+
+    function copyCurrentFen() {
+      navigator.clipboard?.writeText(boardState.fen);
+      document.getElementById("stream-state-text").textContent = "📋 已复制当前盘面 FEN";
+    }
+
+    // Boot
+    (async () => {
+      await fetchStatus();
+      await syncBoardFromFen(START_FEN);
+    })();
+  </script>
+</body>
+</html>

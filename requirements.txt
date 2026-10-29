@@ -1,0 +1,7 @@
+# On Windows with GTX 1660 Ti, install CUDA PyTorch first if not already installed:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+tokenizers>=0.19.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+tqdm>=4.66.0
